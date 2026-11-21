@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#17172b">
+  <title>Xylophone Simulator</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; color: #f7f7ff; background: radial-gradient(circle at top, #30305a, #17172b 65%); }
+    .app { width: min(900px, 100%); padding: clamp(22px, 5vw, 42px); border: 1px solid #ffffff20; border-radius: 28px; background: #20203bdc; box-shadow: 0 24px 80px #0006; }
+    header { text-align: center; margin-bottom: 30px; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -.04em; }
+    header p { margin: 0; color: #c4c4df; }
+    .stage { padding: 22px 14px 28px; border-radius: 22px; background: linear-gradient(180deg, #121225, #292947); border: 1px solid #ffffff14; }
+    .bars { display: flex; align-items: flex-start; justify-content: center; gap: clamp(5px, 1.2vw, 12px); min-height: 245px; }
+    .bar { --bar: #ff6262; width: min(10.5%, 78px); height: var(--height); margin-top: calc((245px - var(--height)) / 2); border: 0; border-radius: 13px 13px 20px 20px; color: #17172b; font-weight: 900; font-size: clamp(.85rem, 2vw, 1.15rem); cursor: pointer; background: linear-gradient(110deg, #ffffff70, transparent 35%), var(--bar); box-shadow: inset 0 -8px 0 #0002, 0 8px 15px #0005; transition: transform .09s, filter .09s; touch-action: manipulation; }
+    .bar:hover { filter: brightness(1.12); }
+    .bar:active, .bar.playing { transform: translateY(7px) scale(.97); filter: brightness(1.2); box-shadow: inset 0 -3px 0 #0002, 0 2px 5px #0005; }
+    .controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; margin-top: 24px; }
+    button.action { border: 1px solid #ffffff25; border-radius: 999px; padding: 11px 18px; color: white; background: #45456f; font-weight: 700; cursor: pointer; }
+    button.action.primary { background: #7562ee; border-color: #9588ff; }
+    button.action:hover { filter: brightness(1.15); }
+    .volume { display: flex; align-items: center; gap: 10px; color: #d3d3ed; font-size: .95rem; }
+    input[type=range] { accent-color: #a99cff; width: 115px; }
+    .hint { text-align: center; color: #aaaaca; font-size: .9rem; margin: 22px 0 0; }
+    #status { min-height: 1.4em; text-align: center; color: #d8d2ff; margin: 12px 0 0; }
+    @media (max-width: 560px) { body { padding: 12px; } .app { padding: 22px 12px; } .stage { padding-inline: 5px; } .bars { gap: 4px; min-height: 190px; } .bar { height: calc(var(--height) * .78); margin-top: calc((190px - var(--height) * .78) / 2); border-radius: 9px 9px 14px 14px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>🎵 Xylophone Simulator</h1>
+      <p>Tap a colorful bar or use your keyboard to play a tune.</p>
+    </header>
+    <section class="stage" aria-label="Xylophone">
+      <div class="bars" id="bars">
+        <button class="bar" style="--bar:#ff6262;--height:150px" data-note="C4" aria-label="C4">C<br><small>A</small></button>
+        <button class="bar" style="--bar:#ff9d45;--height:170px" data-note="D4" aria-label="D4">D<br><small>S</small></button>
+        <button class="bar" style="--bar:#ffd84d;--height:190px" data-note="E4" aria-label="E4">E<br><small>D</small></button>
+        <button class="bar" style="--bar:#75d879;--height:210px" data-note="F4" aria-label="F4">F<br><small>F</small></button>
+        <button class="bar" style="--bar:#4ec9d8;--height:230px" data-note="G4" aria-label="G4">G<br><small>G</small></button>
+        <button class="bar" style="--bar:#5795ff;--height:210px" data-note="A4" aria-label="A4">A<br><small>H</small></button>
+        <button class="bar" style="--bar:#a77aff;--height:190px" data-note="B4" aria-label="B4">B<br><small>J</small></button>
+        <button class="bar" style="--bar:#ed79c8;--height:170px" data-note="C5" aria-label="C5">C<br><small>K</small></button>
+      </div>
+    </section>
+    <div class="controls">
+      <button class="action primary" id="demo">▶ Play demo</button>
+      <button class="action" id="stop">■ Stop</button>
+      <label class="volume">Volume <input id="volume" type="range" min="0" max="1" step=".01" value=".45"></label>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p class="hint">Keyboard: A · S · D · F · G · H · J · K</p>
+  </main>
+  <script>
+    (() => {
+      const frequencies = { C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392.00, A4:440.00, B4:493.88, C5:523.25 };
+      const keys = ['a','s','d','f','g','h','j','k'];
+      const notes = Object.keys(frequencies);
+      const bars = [...document.querySelectorAll('.bar')];
+      const volume = document.getElementById('volume');
+      const status = document.getElementById('status');
+      let audio;
+      let activeOscillators = [];
+      let demoTimers = [];
+      function getAudio() {
+        if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+        if (audio.state === 'suspended') audio.resume();
+        return audio;
+      }
+      function play(note) {
+        const ctx = getAudio();
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const now = ctx.currentTime;
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequencies[note];
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(Number(volume.value) * 0.32, now + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.76);
+        activeOscillators.push(oscillator);
+        oscillator.onended = () => { activeOscillators = activeOscillators.filter(item => item !== oscillator); };
+        const bar = bars.find(item => item.dataset.note === note);
+        if (bar) {
+          bar.classList.add('playing');
+          window.setTimeout(() => bar.classList.remove('playing'), 130);
+        }
+        status.textContent = 'Playing ' + note;
+      }
+      bars.forEach(bar => bar.addEventListener('click', () => play(bar.dataset.note)));
+      document.addEventListener('keydown', event => {
+        if (event.repeat || event.target.matches('input, textarea')) return;
+        const index = keys.indexOf(event.key.toLowerCase());
+        if (index !== -1) play(notes[index]);
+      });
+      document.getElementById('demo').addEventListener('click', () => {
+        stop();
+        const melody = ['C4','C4','G4','G4','A4','A4','G4','F4','F4','E4','E4','D4','D4','C4'];
+        melody.forEach((note, index) => demoTimers.push(window.setTimeout(() => play(note), index * 360)));
+        status.textContent = 'Playing demo melody…';
+      });
+      function stop() {
+        demoTimers.forEach(window.clearTimeout);
+        demoTimers = [];
+        activeOscillators.forEach(oscillator => { try { oscillator.stop(); } catch (_) {} });
+        activeOscillators = [];
+        bars.forEach(bar => bar.classList.remove('playing'));
+        status.textContent = 'Stopped';
+      }
+      document.getElementById('stop').addEventListener('click', stop);
+    })();
+  </script>
+</body>
+</html>
